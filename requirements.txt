@@ -21,6 +21,7 @@ chromadb
 pinecone
 pymongo
 psycopg[binary]
+
 # Utilities
 python-dotenv
 numpy
