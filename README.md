@@ -7,7 +7,7 @@ Microsserviço FastAPI para processamento de documentos PDF, geração de embedd
 - ✅ **API FastAPI moderna** com documentação automática (Swagger/ReDoc)
 - 📄 **Processamento de PDF** com extração de texto e chunking inteligente
 - 🧠 **Geração de embeddings** usando Sentence Transformers
-- 🔄 **Adaptadores modulares** para bancos vetoriais (ChromaDB, Pinecone, MongoDB)
+- 🔄 **Adaptadores modulares** para bancos vetoriais (ChromaDB, Pinecone, MongoDB, PostgreSQL/pgvector)
 - 🔍 **Busca semântica** com relevância por cosine similarity
 - ⚙️ **Fácil configuração** via variáveis de ambiente
 - 🏥 **Health check** para monitoramento
@@ -51,15 +51,19 @@ cp .env.example .env
 Edite `.env` com suas configurações:
 
 ```env
-# Vector Store: chromadb, pinecone ou mongodb
+# Vector Store: chromadb, pinecone, mongodb ou postgres
 VECTOR_STORE_TYPE=chromadb
 
 # Para Pinecone
 PINECONE_API_KEY=sua-chave-aqui
-PINECONE_ENVIRONMENT=us-west1-gcp
+PINECONE_CLOUD=aws
+PINECONE_REGION=us-east-1
 
 # Para MongoDB
 MONGODB_CONNECTION_STRING=mongodb://localhost:27017
+
+# Para PostgreSQL + pgvector
+POSTGRES_CONNECTION_STRING=postgresql://postgres:postgres@localhost:5432/rag_system
 ```
 
 ## 🚀 Executar a Aplicação
@@ -206,7 +210,8 @@ app/
 ├── adapters/
 │   ├── chromadb_adapter.py    # Adaptador ChromaDB
 │   ├── pinecone_adapter.py    # Adaptador Pinecone
-│   └── mongodb_adapter.py     # Adaptador MongoDB
+│   ├── mongodb_adapter.py     # Adaptador MongoDB
+│   └── postgres_adapter.py    # Adaptador PostgreSQL + pgvector
 └── schemas/
     └── __init__.py        # Schemas Pydantic para validação
 ```
@@ -227,7 +232,8 @@ CHROMADB_PERSIST_DIRECTORY=./chroma_data
 ```env
 VECTOR_STORE_TYPE=pinecone
 PINECONE_API_KEY=pk-xxx...
-PINECONE_ENVIRONMENT=us-west1-gcp
+PINECONE_CLOUD=aws
+PINECONE_REGION=us-east-1
 ```
 
 ### MongoDB (Com Vector Search)
@@ -236,6 +242,14 @@ PINECONE_ENVIRONMENT=us-west1-gcp
 VECTOR_STORE_TYPE=mongodb
 MONGODB_CONNECTION_STRING=mongodb+srv://user:pass@cluster.mongodb.net/
 MONGODB_DATABASE_NAME=rag_system
+```
+
+### PostgreSQL + pgvector
+
+```env
+VECTOR_STORE_TYPE=postgres
+POSTGRES_CONNECTION_STRING=postgresql://postgres:postgres@localhost:5432/rag_system
+POSTGRES_COLLECTION_TABLE_PREFIX=rag_
 ```
 
 ## 📝 Exemplo de Uso
@@ -332,6 +346,7 @@ pytest tests/
 - **ChromaDB** - Banco vetorial em memória
 - **Pinecone** - Banco vetorial cloud
 - **MongoDB** - Banco de dados com vector search
+- **PostgreSQL + pgvector** - Banco relacional com busca vetorial
 - **PyPDF2/pdfplumber** - Processamento de PDFs
 
 ## 🐳 Docker (Opcional)
@@ -354,6 +369,19 @@ Build e execute:
 ```bash
 docker build -t ms-ai-rag .
 docker run -p 8000:8000 ms-ai-rag
+```
+
+Com Docker Compose (serviços opcionais por profile):
+
+```bash
+# Apenas API
+docker compose up --build
+
+# API + MongoDB
+docker compose --profile with-mongodb up --build
+
+# API + PostgreSQL/pgvector
+docker compose --profile with-postgres up --build
 ```
 
 ## 🤝 Contribuindo

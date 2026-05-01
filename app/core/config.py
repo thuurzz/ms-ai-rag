@@ -14,7 +14,7 @@ class Settings(BaseSettings):
     DEBUG: bool = False
 
     # Vector Store
-    VECTOR_STORE_TYPE: Literal["chromadb", "pinecone", "mongodb"] = "chromadb"
+    VECTOR_STORE_TYPE: Literal["chromadb", "pinecone", "mongodb", "postgres"] = "chromadb"
 
     # ChromaDB
     CHROMADB_PERSIST_DIRECTORY: str = "./chroma_data"
@@ -27,6 +27,10 @@ class Settings(BaseSettings):
     # MongoDB
     MONGODB_CONNECTION_STRING: str = "mongodb://localhost:27017"
     MONGODB_DATABASE_NAME: str = "rag_system"
+
+    # PostgreSQL + pgvector
+    POSTGRES_CONNECTION_STRING: str = ""
+    POSTGRES_COLLECTION_TABLE_PREFIX: str = "rag_"
 
     # Embeddings
     EMBEDDING_MODEL: str = "all-MiniLM-L6-v2"

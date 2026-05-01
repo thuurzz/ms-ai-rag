@@ -1,6 +1,6 @@
 from app.core.config import settings
 from app.core.vector_store import VectorStoreAdapter
-from app.adapters import ChromaDBAdapter, PineconeAdapter, MongoDBAdapter
+from app.adapters import ChromaDBAdapter, PineconeAdapter, MongoDBAdapter, PostgresAdapter
 
 
 class VectorStoreFactory:
@@ -39,8 +39,17 @@ class VectorStoreFactory:
                 model_name=settings.EMBEDDING_MODEL
             )
 
+        elif store_type == "postgres":
+            if not settings.POSTGRES_CONNECTION_STRING:
+                raise ValueError("POSTGRES_CONNECTION_STRING não configurada")
+            return PostgresAdapter(
+                connection_string=settings.POSTGRES_CONNECTION_STRING,
+                table_prefix=settings.POSTGRES_COLLECTION_TABLE_PREFIX,
+                model_name=settings.EMBEDDING_MODEL
+            )
+
         else:
             raise ValueError(
                 f"Vector store '{store_type}' não suportado. "
-                f"Use: chromadb, pinecone ou mongodb"
+                f"Use: chromadb, pinecone, mongodb ou postgres"
             )
