@@ -85,6 +85,28 @@ Acesse a documentação em:
 - Swagger UI: http://localhost:8000/docs
 - ReDoc: http://localhost:8000/redoc
 
+## 🖥️ Interface Streamlit (desacoplada)
+
+Existe uma interface em `streamlit_ui/app.py` que consome a API via HTTP (sem importar módulos internos do backend).
+
+```bash
+# Instalar dependências da UI
+pip install -r streamlit_ui/requirements.txt
+
+# Executar a interface
+streamlit run streamlit_ui/app.py
+```
+
+Na sidebar, configure a URL da API (padrão: `http://localhost:8000`).
+
+A UI cobre todas as operações expostas pela API:
+- `GET /health`
+- `GET /api/v1/collections`
+- `POST /api/v1/upload`
+- `POST /api/v1/search`
+- `GET /api/v1/collections/{collection_name}/documents`
+- `DELETE /api/v1/collections/{collection_name}`
+
 ## 📚 Endpoints da API
 
 ### 1. Health Check
@@ -194,6 +216,27 @@ DELETE /api/v1/collections/{collection_name}
 ```
 
 Remove uma coleção e todos seus documentos.
+
+### 5. Listar Coleções
+
+```http
+GET /api/v1/collections
+```
+
+Retorna as coleções disponíveis no backend vetorial.
+
+### 6. Listar Documentos e Chunks
+
+```http
+GET /api/v1/collections/{collection_name}/documents
+```
+
+Lista todos os documentos de uma coleção com seus metadados e chunks.
+
+Parâmetros opcionais de query:
+- `document_id`: filtra por um documento específico
+- `page`: página da listagem (padrão `1`)
+- `page_size`: itens por página (padrão `20`, máximo `200`)
 
 ## 🏗️ Arquitetura
 

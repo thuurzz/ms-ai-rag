@@ -1,4 +1,4 @@
-from typing import List
+from typing import Any, Dict, List
 from app.core.vector_store import VectorStoreAdapter, Document, SearchResult
 from sentence_transformers import SentenceTransformer
 from pinecone import Pinecone, ServerlessSpec
@@ -236,3 +236,22 @@ class PineconeAdapter(VectorStoreAdapter):
             return True
         except Exception:
             return False
+
+    async def list_chunks(self, collection_name: str) -> List[Dict[str, Any]]:
+        """Listagem completa não é suportada nativamente pelo Pinecone."""
+        raise NotImplementedError(
+            "Listagem de todos os chunks não suportada para Pinecone sem um índice auxiliar de IDs"
+        )
+
+    async def list_collections(self) -> List[str]:
+        """Lista coleções (índices) disponíveis no Pinecone."""
+        try:
+            response = self.pc.list_indexes()
+            if hasattr(response, "names"):
+                names = response.names()
+            else:
+                names = [item.get("name") for item in response if isinstance(item, dict)]
+            return sorted([name for name in names if name])
+        except Exception as e:
+            print(f"Erro ao listar coleções no Pinecone: {str(e)}")
+            raise

@@ -28,3 +28,4 @@ numpy
 requests
 setuptools
 wheel
+streamlit
