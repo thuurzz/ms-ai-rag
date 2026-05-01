@@ -1,6 +1,8 @@
 from fastapi import APIRouter, UploadFile, File, Form, HTTPException, Query, status
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Literal, Optional
+import json
 import uuid
+from datetime import date
 from app.core import PDFProcessor, VectorStoreFactory, settings
 from app.schemas import (
     DocumentUploadResponse,
@@ -14,12 +16,124 @@ from app.schemas import (
 
 router = APIRouter(prefix="/api/v1", tags=["RAG Operations"])
 
+
+ConfidentialityType = Literal["publico_interno", "restrito", "confidencial"]
+
 # Instâncias globais
 pdf_processor = PDFProcessor(
     chunk_size=settings.PDF_CHUNK_SIZE,
     chunk_overlap=settings.PDF_CHUNK_OVERLAP,
 )
 vector_store = VectorStoreFactory.create_vector_store()
+
+
+def _parse_json_metadata(metadata: Optional[str]) -> Optional[Dict[str, Any]]:
+    if metadata is None:
+        return None
+
+    raw = metadata.strip()
+    if not raw:
+        return None
+
+    try:
+        parsed = json.loads(raw)
+    except json.JSONDecodeError as e:
+        raise ValueError(f"Metadata inválido: {str(e)}")
+
+    if not isinstance(parsed, dict):
+        raise ValueError("Metadata deve ser um objeto JSON")
+
+    return parsed
+
+
+def _parse_tags(tags: Optional[str]) -> Optional[List[str]]:
+    if tags is None:
+        return None
+
+    raw = tags.strip()
+    if not raw:
+        return None
+
+    if raw.startswith("["):
+        try:
+            parsed = json.loads(raw)
+        except json.JSONDecodeError as e:
+            raise ValueError(f"Tags inválidas: {str(e)}")
+
+        if not isinstance(parsed, list):
+            raise ValueError("Tags devem ser uma lista JSON ou string separada por vírgulas")
+
+        normalized = [str(item).strip() for item in parsed if str(item).strip()]
+        return normalized or None
+
+    normalized = [item.strip() for item in raw.split(",") if item.strip()]
+    return normalized or None
+
+
+def _serialize_metadata_values(metadata: Dict[str, Any]) -> Dict[str, Any]:
+    serialized: Dict[str, Any] = {}
+    for key, value in metadata.items():
+        if isinstance(value, date):
+            serialized[key] = value.isoformat()
+        elif isinstance(value, dict):
+            serialized[key] = _serialize_metadata_values(value)
+        elif isinstance(value, list):
+            serialized[key] = [
+                item.isoformat() if isinstance(item, date) else item
+                for item in value
+            ]
+        else:
+            serialized[key] = value
+    return serialized
+
+
+def _build_standard_metadata(
+    *,
+    tenant_id: Optional[str],
+    domain: Optional[str],
+    doc_type: Optional[str],
+    language: Optional[str],
+    country: Optional[str],
+    source_system: Optional[str],
+    effective_date: Optional[str],
+    confidentiality: Optional[ConfidentialityType],
+    version: Optional[str],
+    tags: Optional[str],
+    custom_metadata: Optional[str],
+) -> Dict[str, Any]:
+    metadata: Dict[str, Any] = {}
+
+    if tenant_id and tenant_id.strip():
+        metadata["tenant_id"] = tenant_id.strip()
+    if domain and domain.strip():
+        metadata["domain"] = domain.strip()
+    if doc_type and doc_type.strip():
+        metadata["doc_type"] = doc_type.strip()
+    if language and language.strip():
+        metadata["language"] = language.strip()
+    if country and country.strip():
+        metadata["country"] = country.strip()
+    if source_system and source_system.strip():
+        metadata["source_system"] = source_system.strip()
+    if effective_date and effective_date.strip():
+        try:
+            metadata["effective_date"] = date.fromisoformat(effective_date.strip()).isoformat()
+        except ValueError:
+            raise ValueError("effective_date deve estar no formato YYYY-MM-DD")
+    if confidentiality:
+        metadata["confidentiality"] = confidentiality
+    if version and version.strip():
+        metadata["version"] = version.strip()
+
+    parsed_tags = _parse_tags(tags)
+    if parsed_tags is not None:
+        metadata["tags"] = parsed_tags
+
+    parsed_custom = _parse_json_metadata(custom_metadata)
+    if parsed_custom is not None:
+        metadata["custom_metadata"] = parsed_custom
+
+    return metadata
 
 
 def _build_documents_from_chunks(chunks: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
@@ -87,7 +201,26 @@ async def upload_document(
     collection_name: str = Form(...,
                                 description="Coleção para armazenar o documento"),
     metadata: Optional[str] = Form(
-        None, description="JSON string com metadados adicionais"),
+        None,
+        description="JSON string legado para metadados livres (opcional)"
+    ),
+    tenant_id: Optional[str] = Form(None, description="ID do tenant/cliente (ex.: empresa_alpha)"),
+    domain: Optional[str] = Form(
+        None,
+        description="Domínio do conteúdo (texto livre, ex.: rh, juridico, financeiro)",
+    ),
+    doc_type: Optional[str] = Form(
+        None,
+        description="Tipo do documento (texto livre, ex.: politica, manual, contrato)",
+    ),
+    language: Optional[str] = Form(None, description="Idioma (ex.: pt-BR, en-US)"),
+    country: Optional[str] = Form(None, description="País (ex.: BR, US)"),
+    source_system: Optional[str] = Form(None, description="Sistema de origem (ex.: sharepoint)"),
+    effective_date: Optional[str] = Form(None, description="Data efetiva (YYYY-MM-DD)"),
+    confidentiality: Optional[ConfidentialityType] = Form(None, description="Nível de confidencialidade"),
+    version: Optional[str] = Form(None, description="Versão do documento (ex.: v1, 2026.04)"),
+    tags: Optional[str] = Form(None, description="Lista de tags em JSON ou string separada por vírgulas"),
+    custom_metadata: Optional[str] = Form(None, description="JSON com metadados customizados"),
 ):
     """
     Endpoint para upload de PDFs.
@@ -99,6 +232,24 @@ async def upload_document(
     Retorna informações sobre o upload e os chunks criados.
     """
     try:
+        legacy_metadata = _parse_json_metadata(metadata) or {}
+        standard_metadata = _build_standard_metadata(
+            tenant_id=tenant_id,
+            domain=domain,
+            doc_type=doc_type,
+            language=language,
+            country=country,
+            source_system=source_system,
+            effective_date=effective_date,
+            confidentiality=confidentiality,
+            version=version,
+            tags=tags,
+            custom_metadata=custom_metadata,
+        )
+        upload_metadata = {**legacy_metadata, **standard_metadata}
+        if not upload_metadata:
+            upload_metadata = None
+
         # Validar tipo de arquivo
         if not file.filename.lower().endswith('.pdf'):
             raise HTTPException(
@@ -125,6 +276,7 @@ async def upload_document(
             file_content=file_content,
             filename=file.filename,
             document_id=document_id,
+            metadata=upload_metadata,
         )
 
         if not documents:
@@ -187,7 +339,11 @@ async def search_documents(query_request: SearchQuery):
         results = await vector_store.search(
             query=query_request.query,
             collection_name=query_request.collection_name,
-            top_k=query_request.top_k
+            top_k=query_request.top_k,
+            metadata_filters=(
+                _serialize_metadata_values(query_request.metadata_filters.model_dump(exclude_none=True))
+                if query_request.metadata_filters else None
+            ),
         )
 
         # Converter para response format

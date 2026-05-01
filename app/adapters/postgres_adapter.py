@@ -135,7 +135,13 @@ class PostgresAdapter(VectorStoreAdapter):
             print(f"Erro ao adicionar documentos no PostgreSQL: {str(e)}")
             raise
 
-    async def search(self, query: str, collection_name: str, top_k: int = 5) -> List[SearchResult]:
+    async def search(
+        self,
+        query: str,
+        collection_name: str,
+        top_k: int = 5,
+        metadata_filters: Dict[str, Any] = None,
+    ) -> List[SearchResult]:
         """Busca documentos similares no PostgreSQL/pgvector."""
         try:
             table_name = self._normalize_table_name(collection_name)
@@ -145,21 +151,34 @@ class PostgresAdapter(VectorStoreAdapter):
             query_embedding = self.embedding_model.encode([query], convert_to_tensor=False)[0]
             query_embedding_values = query_embedding.tolist() if hasattr(query_embedding, "tolist") else query_embedding
 
-            search_query = sql.SQL(
-                """
-                SELECT
-                    content,
-                    metadata,
-                    (embedding <=> %s::vector) AS distance
-                FROM {table_name}
-                ORDER BY embedding <=> %s::vector
-                LIMIT %s
-                """
-            ).format(table_name=sql.Identifier(table_name))
+            query_parts = [
+                sql.SQL(
+                    """
+                    SELECT
+                        content,
+                        metadata,
+                        (embedding <=> %s::vector) AS distance
+                    FROM {table_name}
+                    """
+                ).format(table_name=sql.Identifier(table_name))
+            ]
+
+            params: List[Any] = []
+            vector_literal = self._vector_literal(query_embedding_values)
+            params.append(vector_literal)
+
+            if metadata_filters:
+                query_parts.append(sql.SQL("WHERE metadata @> %s::jsonb"))
+                params.append(json.dumps(metadata_filters))
+
+            query_parts.append(sql.SQL("ORDER BY embedding <=> %s::vector LIMIT %s"))
+            params.append(vector_literal)
+            params.append(top_k)
+
+            search_query = sql.SQL(" ").join(query_parts)
 
             with self.connection.cursor() as cursor:
-                vector_literal = self._vector_literal(query_embedding_values)
-                cursor.execute(search_query, (vector_literal, vector_literal, top_k))
+                cursor.execute(search_query, tuple(params))
                 rows = cursor.fetchall()
 
             results = []
