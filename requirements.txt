@@ -19,6 +19,7 @@ huggingface-hub>=0.19.0
 chromadb==0.5.3
 pinecone>=3.0.0
 pymongo==4.6.0
+psycopg[binary]>=3.1
 
 # Utilities
 python-dotenv==1.0.0

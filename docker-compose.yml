@@ -27,6 +27,7 @@ services:
   mongodb:
     image: mongo:7.0
     container_name: ms-ai-mongodb
+    profiles: ["with-mongodb"]
     ports:
       - "27017:27017"
     environment:
@@ -37,8 +38,22 @@ services:
       - mongodb_data:/data/db
     networks:
       - rag-network
-    # Descomente a linha abaixo para usar MongoDB
-    # profiles: ["with-mongodb"]
+
+  # Serviço PostgreSQL + pgvector (opcional, para usar adaptador PostgreSQL)
+  postgres:
+    image: pgvector/pgvector:pg16
+    container_name: ms-ai-postgres
+    profiles: ["with-postgres"]
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: rag_system
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - rag-network
 
 networks:
   rag-network:
@@ -46,3 +61,4 @@ networks:
 
 volumes:
   mongodb_data:
+  postgres_data:
