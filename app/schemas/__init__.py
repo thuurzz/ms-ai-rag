@@ -64,6 +64,53 @@ class SearchResponse(BaseModel):
     total_results: int = Field(description="Total de resultados")
 
 
+class ChunkItem(BaseModel):
+    """Representa um chunk armazenado."""
+
+    chunk_id: str = Field(description="ID do chunk")
+    chunk_index: int = Field(description="Índice do chunk no documento")
+    content: str = Field(description="Conteúdo textual do chunk")
+    metadata: Dict[str, Any] = Field(description="Metadados do chunk")
+
+
+class DocumentWithChunksItem(BaseModel):
+    """Representa um documento e seus chunks."""
+
+    document_id: str = Field(description="ID lógico do documento")
+    source_file: Optional[str] = Field(
+        default=None,
+        description="Arquivo de origem",
+    )
+    chunk_total: int = Field(description="Quantidade total de chunks do documento")
+    metadata: Dict[str, Any] = Field(description="Metadados do documento")
+    chunks: List[ChunkItem] = Field(description="Lista de chunks do documento")
+
+
+class CollectionDocumentsResponse(BaseModel):
+    """Resposta de listagem de documentos/chunks por coleção."""
+
+    collection_name: str = Field(description="Nome da coleção")
+    total_documents: int = Field(description="Total de documentos")
+    total_chunks: int = Field(description="Total de chunks")
+    page: int = Field(description="Página atual")
+    page_size: int = Field(description="Tamanho da página")
+    total_pages: int = Field(description="Total de páginas")
+    document_id_filter: Optional[str] = Field(
+        default=None,
+        description="Filtro aplicado por document_id",
+    )
+    documents: List[DocumentWithChunksItem] = Field(
+        description="Documentos com seus respectivos chunks"
+    )
+
+
+class CollectionListResponse(BaseModel):
+    """Resposta de listagem de coleções."""
+
+    total_collections: int = Field(description="Total de coleções")
+    collections: List[str] = Field(description="Nomes das coleções")
+
+
 class HealthCheckResponse(BaseModel):
     """Schema para resposta de health check."""
 

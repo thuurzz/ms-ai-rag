@@ -1,6 +1,6 @@
 import json
 import re
-from typing import List
+from typing import Any, Dict, List
 
 import psycopg
 from psycopg import sql
@@ -47,6 +47,12 @@ class PostgresAdapter(VectorStoreAdapter):
 
     def _vector_literal(self, embedding: List[float]) -> str:
         return "[" + ",".join(str(float(x)) for x in embedding) + "]"
+
+    def _table_name_to_collection_name(self, table_name: str) -> str:
+        if self.table_prefix and table_name.startswith(self.table_prefix):
+            collection_name = table_name[len(self.table_prefix):]
+            return collection_name or table_name
+        return table_name
 
     def _ensure_vector_extension(self):
         try:
@@ -226,3 +232,69 @@ class PostgresAdapter(VectorStoreAdapter):
             return bool(row and row[0])
         except Exception:
             return False
+
+    async def list_chunks(self, collection_name: str) -> List[Dict[str, Any]]:
+        """Lista todos os chunks de uma coleção no PostgreSQL."""
+        try:
+            table_name = self._normalize_table_name(collection_name)
+            if not self._table_exists(table_name):
+                return []
+
+            query = sql.SQL(
+                """
+                SELECT id, content, metadata
+                FROM {table_name}
+                ORDER BY
+                    COALESCE(metadata->>'document_id', ''),
+                    COALESCE((metadata->>'chunk_index')::int, 0)
+                """
+            ).format(table_name=sql.Identifier(table_name))
+
+            with self.connection.cursor() as cursor:
+                cursor.execute(query)
+                rows = cursor.fetchall()
+
+            chunks = []
+            for chunk_id, content, metadata in rows:
+                chunks.append(
+                    {
+                        "chunk_id": chunk_id,
+                        "content": content,
+                        "metadata": metadata or {},
+                    }
+                )
+
+            return chunks
+        except Exception as e:
+            print(f"Erro ao listar chunks no PostgreSQL: {str(e)}")
+            raise
+
+    async def list_collections(self) -> List[str]:
+        """Lista coleções disponíveis no PostgreSQL."""
+        try:
+            if self.table_prefix:
+                query = """
+                SELECT table_name
+                FROM information_schema.tables
+                WHERE table_schema = 'public'
+                  AND table_name LIKE %s
+                ORDER BY table_name
+                """
+                params = (f"{self.table_prefix}%",)
+            else:
+                query = """
+                SELECT table_name
+                FROM information_schema.tables
+                WHERE table_schema = 'public'
+                ORDER BY table_name
+                """
+                params = ()
+
+            with self.connection.cursor() as cursor:
+                cursor.execute(query, params)
+                rows = cursor.fetchall()
+
+            return [self._table_name_to_collection_name(row[0]) for row in rows]
+        except Exception as e:
+            print(f"Erro ao listar coleções no PostgreSQL: {str(e)}")
+            raise

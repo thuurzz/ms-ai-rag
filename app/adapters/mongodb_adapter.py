@@ -1,4 +1,4 @@
-from typing import List, Optional
+from typing import Any, Dict, List, Optional
 from app.core.vector_store import VectorStoreAdapter, Document, SearchResult
 from sentence_transformers import SentenceTransformer
 from pymongo import MongoClient
@@ -151,3 +151,32 @@ class MongoDBAdapter(VectorStoreAdapter):
             return True
         except ConnectionFailure:
             return False
+
+    async def list_chunks(self, collection_name: str) -> List[Dict[str, Any]]:
+        """Lista todos os chunks de uma coleção no MongoDB."""
+        try:
+            collection = self.db[collection_name]
+            cursor = collection.find({}, {"_id": 1, "content": 1, "metadata": 1})
+
+            chunks = []
+            for item in cursor:
+                chunks.append(
+                    {
+                        "chunk_id": item.get("_id"),
+                        "content": item.get("content", ""),
+                        "metadata": item.get("metadata", {}) or {},
+                    }
+                )
+
+            return chunks
+        except Exception as e:
+            print(f"Erro ao listar chunks no MongoDB: {str(e)}")
+            raise
+
+    async def list_collections(self) -> List[str]:
+        """Lista coleções disponíveis no MongoDB."""
+        try:
+            return sorted(self.db.list_collection_names())
+        except Exception as e:
+            print(f"Erro ao listar coleções no MongoDB: {str(e)}")
+            raise

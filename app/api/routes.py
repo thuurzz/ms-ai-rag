@@ -1,5 +1,5 @@
-from fastapi import APIRouter, UploadFile, File, Form, HTTPException, status
-from typing import Optional
+from fastapi import APIRouter, UploadFile, File, Form, HTTPException, Query, status
+from typing import Any, Dict, List, Optional
 import uuid
 from app.core import PDFProcessor, VectorStoreFactory, settings
 from app.schemas import (
@@ -7,6 +7,8 @@ from app.schemas import (
     SearchQuery,
     SearchResponse,
     SearchResultItem,
+    CollectionListResponse,
+    CollectionDocumentsResponse,
     ErrorResponse,
 )
 
@@ -18,6 +20,60 @@ pdf_processor = PDFProcessor(
     chunk_overlap=settings.PDF_CHUNK_OVERLAP,
 )
 vector_store = VectorStoreFactory.create_vector_store()
+
+
+def _build_documents_from_chunks(chunks: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    documents_map: Dict[str, Dict[str, Any]] = {}
+
+    for chunk in chunks:
+        metadata = chunk.get("metadata") or {}
+        chunk_id = str(chunk.get("chunk_id", ""))
+        content = chunk.get("content", "")
+
+        document_id = metadata.get("document_id")
+        if not document_id and "_chunk_" in chunk_id:
+            document_id = chunk_id.rsplit("_chunk_", 1)[0]
+        if not document_id:
+            document_id = chunk_id or "unknown_document"
+
+        chunk_index = metadata.get("chunk_index", 0)
+        try:
+            chunk_index = int(chunk_index)
+        except (ValueError, TypeError):
+            chunk_index = 0
+
+        if document_id not in documents_map:
+            document_metadata = {
+                key: value
+                for key, value in metadata.items()
+                if key not in {"chunk_index", "chunk_total"}
+            }
+            documents_map[document_id] = {
+                "document_id": str(document_id),
+                "source_file": metadata.get("source_file"),
+                "chunk_total": int(metadata.get("chunk_total", 0) or 0),
+                "metadata": document_metadata,
+                "chunks": [],
+            }
+
+        documents_map[document_id]["chunks"].append(
+            {
+                "chunk_id": chunk_id,
+                "chunk_index": chunk_index,
+                "content": content,
+                "metadata": metadata,
+            }
+        )
+
+    documents = list(documents_map.values())
+    for document in documents:
+        document["chunks"].sort(key=lambda item: item.get("chunk_index", 0))
+        inferred_total = len(document["chunks"])
+        if document["chunk_total"] <= 0:
+            document["chunk_total"] = inferred_total
+
+    documents.sort(key=lambda item: item["document_id"])
+    return documents
 
 
 @router.post(
@@ -202,4 +258,118 @@ async def delete_collection(collection_name: str):
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Erro ao deletar coleção: {str(e)}"
+        )
+
+
+@router.get(
+    "/collections",
+    response_model=CollectionListResponse,
+    summary="Listar Coleções",
+    description="Lista coleções disponíveis no backend vetorial"
+)
+async def list_collections():
+    """Endpoint para listar coleções disponíveis."""
+    try:
+        try:
+            collections = await vector_store.list_collections()
+        except NotImplementedError as e:
+            raise HTTPException(
+                status_code=status.HTTP_501_NOT_IMPLEMENTED,
+                detail=str(e)
+            )
+
+        return CollectionListResponse(
+            total_collections=len(collections),
+            collections=collections,
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Erro ao listar coleções: {str(e)}"
+        )
+
+
+@router.get(
+    "/collections/{collection_name}/documents",
+    response_model=CollectionDocumentsResponse,
+    summary="Listar Documentos e Chunks",
+    description="Lista todos os documentos de uma coleção com seus chunks e metadados"
+)
+async def list_collection_documents(
+    collection_name: str,
+    document_id: Optional[str] = Query(
+        default=None,
+        description="Filtra por document_id específico"
+    ),
+    page: int = Query(default=1, ge=1, description="Página da listagem"),
+    page_size: int = Query(
+        default=20,
+        ge=1,
+        le=200,
+        description="Quantidade de documentos por página"
+    ),
+):
+    """
+    Endpoint para listar documentos e chunks de uma coleção.
+
+    - **collection_name**: Nome da coleção
+    - **document_id**: Filtro opcional por document_id
+    - **page**: Página da listagem (inicia em 1)
+    - **page_size**: Quantidade de documentos por página
+    """
+    try:
+        if not collection_name.strip():
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Nome da coleção é obrigatório"
+            )
+
+        try:
+            chunks = await vector_store.list_chunks(collection_name.strip())
+        except NotImplementedError as e:
+            raise HTTPException(
+                status_code=status.HTTP_501_NOT_IMPLEMENTED,
+                detail=str(e)
+            )
+
+        documents = _build_documents_from_chunks(chunks)
+
+        if document_id and document_id.strip():
+            target_document_id = document_id.strip()
+            documents = [
+                item for item in documents
+                if item["document_id"] == target_document_id
+            ]
+
+        total_documents = len(documents)
+        total_chunks = sum(len(item.get("chunks", [])) for item in documents)
+        total_pages = max(1, (total_documents + page_size - 1) // page_size)
+
+        start_index = (page - 1) * page_size
+        end_index = start_index + page_size
+        paginated_documents = documents[start_index:end_index]
+
+        return CollectionDocumentsResponse(
+            collection_name=collection_name.strip(),
+            total_documents=total_documents,
+            total_chunks=total_chunks,
+            page=page,
+            page_size=page_size,
+            total_pages=total_pages,
+            document_id_filter=document_id.strip() if document_id else None,
+            documents=paginated_documents,
+        )
+    except HTTPException:
+        raise
+    except ValueError as e:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(e)
+        )
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Erro ao listar documentos/chunks: {str(e)}"
         )

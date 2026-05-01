@@ -91,3 +91,27 @@ class VectorStoreAdapter(ABC):
             True se operacional, False caso contrário
         """
         pass
+
+    async def list_chunks(self, collection_name: str) -> List[Dict[str, Any]]:
+        """
+        Lista chunks armazenados em uma coleção.
+
+        Returns:
+            Lista de itens no formato:
+            {
+                "chunk_id": str,
+                "content": str,
+                "metadata": dict
+            }
+        """
+        raise NotImplementedError(
+            "Listagem de chunks não suportada para este vector store"
+        )
+
+    async def list_collections(self) -> List[str]:
+        """
+        Lista coleções disponíveis no backend vetorial.
+        """
+        raise NotImplementedError(
+            "Listagem de coleções não suportada para este vector store"
+        )

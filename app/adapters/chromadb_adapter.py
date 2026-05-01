@@ -1,5 +1,5 @@
 import chromadb
-from typing import List
+from typing import Any, Dict, List
 from app.core.vector_store import VectorStoreAdapter, Document, SearchResult
 from sentence_transformers import SentenceTransformer
 
@@ -122,3 +122,45 @@ class ChromaDBAdapter(VectorStoreAdapter):
             return self.client is not None
         except Exception:
             return False
+
+    async def list_chunks(self, collection_name: str) -> List[Dict[str, Any]]:
+        """Lista todos os chunks de uma coleção no ChromaDB."""
+        try:
+            if collection_name not in self.collections:
+                return []
+
+            collection = self.collections[collection_name]
+            raw = collection.get(include=["documents", "metadatas"])
+
+            ids = raw.get("ids", []) or []
+            documents = raw.get("documents", []) or []
+            metadatas = raw.get("metadatas", []) or []
+
+            chunks = []
+            for chunk_id, content, metadata in zip(ids, documents, metadatas):
+                chunks.append(
+                    {
+                        "chunk_id": chunk_id,
+                        "content": content,
+                        "metadata": metadata or {},
+                    }
+                )
+
+            return chunks
+        except Exception as e:
+            print(f"Erro ao listar chunks no ChromaDB: {str(e)}")
+            raise
+
+    async def list_collections(self) -> List[str]:
+        """Lista coleções disponíveis no ChromaDB."""
+        try:
+            collections = self.client.list_collections()
+            names = []
+            for collection in collections:
+                name = getattr(collection, "name", None)
+                if name:
+                    names.append(name)
+            return sorted(names)
+        except Exception as e:
+            print(f"Erro ao listar coleções no ChromaDB: {str(e)}")
+            raise
