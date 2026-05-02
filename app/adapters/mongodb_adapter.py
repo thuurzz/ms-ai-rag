@@ -60,7 +60,13 @@ class MongoDBAdapter(VectorStoreAdapter):
             print(f"Erro ao adicionar documentos no MongoDB: {str(e)}")
             raise
 
-    async def search(self, query: str, collection_name: str, top_k: int = 5) -> List[SearchResult]:
+    async def search(
+        self,
+        query: str,
+        collection_name: str,
+        top_k: int = 5,
+        metadata_filters: Dict[str, Any] = None,
+    ) -> List[SearchResult]:
         """Busca documentos similares no MongoDB usando vector search."""
         try:
             collection = self.db[collection_name]
@@ -71,7 +77,18 @@ class MongoDBAdapter(VectorStoreAdapter):
 
             # Buscar usando aggregation pipeline com $search (requer Atlas Vector Search)
             # Se não tiver Atlas Vector Search, usa busca aproximada com score calculado
-            pipeline = [
+            pipeline = []
+            if metadata_filters:
+                pipeline.append(
+                    {
+                        "$match": {
+                            f"metadata.{key}": value
+                            for key, value in metadata_filters.items()
+                        }
+                    }
+                )
+
+            pipeline.extend([
                 {
                     "$addFields": {
                         "similarity": {
@@ -104,7 +121,7 @@ class MongoDBAdapter(VectorStoreAdapter):
                 },
                 {"$sort": {"similarity": -1}},
                 {"$limit": top_k}
-            ]
+            ])
 
             results = list(collection.aggregate(pipeline))
 

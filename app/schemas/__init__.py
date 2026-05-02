@@ -1,5 +1,5 @@
 from pydantic import BaseModel, Field
-from typing import List, Optional, Dict, Any
+from typing import List, Optional, Dict, Any, Literal
 
 
 class DocumentUploadRequest(BaseModel):
@@ -26,6 +26,31 @@ class DocumentUploadResponse(BaseModel):
     status: str = Field(default="success", description="Status do upload")
 
 
+ConfidentialityType = Literal["publico_interno", "restrito", "confidencial"]
+
+
+class SearchMetadataFilters(BaseModel):
+    """Filtros de metadata suportados para refinar a busca semântica."""
+
+    model_config = {"extra": "forbid"}
+
+    tenant_id: Optional[str] = Field(default=None, description="ID do tenant/cliente")
+    domain: Optional[str] = Field(
+        default=None,
+        description="Domínio do conteúdo (texto livre, ex.: rh, juridico, financeiro)",
+    )
+    doc_type: Optional[str] = Field(
+        default=None,
+        description="Tipo do documento (texto livre, ex.: politica, manual, contrato)",
+    )
+    language: Optional[str] = Field(default=None, description="Idioma (ex.: pt-BR, en-US)")
+    country: Optional[str] = Field(default=None, description="País (ex.: BR, US)")
+    source_system: Optional[str] = Field(default=None, description="Sistema de origem")
+    effective_date: Optional[str] = Field(default=None, description="Data efetiva no formato YYYY-MM-DD")
+    confidentiality: Optional[ConfidentialityType] = Field(default=None, description="Nível de confidencialidade")
+    version: Optional[str] = Field(default=None, description="Versão do documento")
+
+
 class SearchQuery(BaseModel):
     """Schema para requisição de busca."""
 
@@ -43,6 +68,10 @@ class SearchQuery(BaseModel):
         ge=1,
         le=100,
         description="Número máximo de resultados"
+    )
+    metadata_filters: Optional[SearchMetadataFilters] = Field(
+        default=None,
+        description="Filtros de metadata por igualdade (opcional)",
     )
 
 

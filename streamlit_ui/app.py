@@ -6,6 +6,9 @@ import streamlit as st
 
 
 DEFAULT_API_URL = "http://localhost:8000"
+DOMAIN_EXAMPLES = "rh, juridico, financeiro, operacoes"
+DOC_TYPE_EXAMPLES = "politica, manual, contrato, procedimento"
+CONFIDENTIALITY_OPTIONS = ["publico_interno", "restrito", "confidencial"]
 
 
 def api_request(
@@ -101,19 +104,19 @@ def render_health(base_url: str) -> None:
                 st.error(f"Erro ao chamar /health: {exc}")
 
 
-def parse_metadata(metadata_text: str) -> Optional[Dict[str, Any]]:
-    cleaned = metadata_text.strip()
+def parse_json_object(raw_text: str, field_name: str) -> Optional[Dict[str, Any]]:
+    cleaned = raw_text.strip()
     if not cleaned:
         return None
 
     try:
         parsed = json.loads(cleaned)
     except json.JSONDecodeError as exc:
-        st.error(f"Metadados inválidos (JSON): {exc}")
+        st.error(f"{field_name} inválido (JSON): {exc}")
         return None
 
     if not isinstance(parsed, dict):
-        st.error("Metadados devem ser um objeto JSON.")
+        st.error(f"{field_name} deve ser um objeto JSON.")
         return None
 
     return parsed
@@ -128,11 +131,39 @@ def render_upload(base_url: str) -> None:
         accept_multiple_files=False,
         key="upload_pdf",
     )
-    metadata_text = st.text_area(
-        "Metadata (JSON opcional)",
-        placeholder='{"cliente": "empresa_xyz", "tipo": "documento"}',
-        key="upload_metadata",
+    st.markdown("**Metadados padronizados**")
+    col_meta_a, col_meta_b = st.columns(2)
+    with col_meta_a:
+        tenant_id = st.text_input("tenant_id", key="upload_tenant_id")
+        domain = st.text_input("domain", placeholder="rh", key="upload_domain")
+        st.caption(f"Exemplos de domain: {DOMAIN_EXAMPLES}")
+        doc_type = st.text_input("doc_type", placeholder="manual", key="upload_doc_type")
+        st.caption(f"Exemplos de doc_type: {DOC_TYPE_EXAMPLES}")
+        language = st.text_input("language", placeholder="pt-BR", key="upload_language")
+        country = st.text_input("country", placeholder="BR", key="upload_country")
+    with col_meta_b:
+        source_system = st.text_input("source_system", placeholder="sharepoint", key="upload_source_system")
+        effective_date = st.text_input("effective_date", placeholder="2026-05-01", key="upload_effective_date")
+        confidentiality = st.selectbox(
+            "confidentiality",
+            options=[""] + CONFIDENTIALITY_OPTIONS,
+            key="upload_confidentiality",
+        )
+        version = st.text_input("version", placeholder="v1", key="upload_version")
+        tags = st.text_input("tags", placeholder="rh, onboarding, brasil", key="upload_tags")
+
+    custom_metadata_text = st.text_area(
+        "custom_metadata (JSON opcional)",
+        placeholder='{"area": "folha", "sistema": "sap"}',
+        key="upload_custom_metadata",
     )
+
+    with st.expander("Compatibilidade (metadata legado JSON)"):
+        legacy_metadata_text = st.text_area(
+            "metadata (legado, opcional)",
+            placeholder='{"cliente": "empresa_xyz", "tipo": "documento"}',
+            key="upload_metadata_legacy",
+        )
 
     if st.button("Enviar PDF", type="primary", use_container_width=True):
         if not collection_name.strip():
@@ -143,13 +174,39 @@ def render_upload(base_url: str) -> None:
             st.warning("Selecione um arquivo PDF.")
             return
 
-        metadata = parse_metadata(metadata_text)
-        if metadata_text.strip() and metadata is None:
+        custom_metadata = parse_json_object(custom_metadata_text, "custom_metadata")
+        if custom_metadata_text.strip() and custom_metadata is None:
+            return
+
+        legacy_metadata = parse_json_object(legacy_metadata_text, "metadata")
+        if legacy_metadata_text.strip() and legacy_metadata is None:
             return
 
         payload = {"collection_name": collection_name.strip()}
-        if metadata is not None:
-            payload["metadata"] = json.dumps(metadata)
+        if tenant_id.strip():
+            payload["tenant_id"] = tenant_id.strip()
+        if domain.strip():
+            payload["domain"] = domain.strip()
+        if doc_type.strip():
+            payload["doc_type"] = doc_type.strip()
+        if language.strip():
+            payload["language"] = language.strip()
+        if country.strip():
+            payload["country"] = country.strip()
+        if source_system.strip():
+            payload["source_system"] = source_system.strip()
+        if effective_date.strip():
+            payload["effective_date"] = effective_date.strip()
+        if confidentiality:
+            payload["confidentiality"] = confidentiality
+        if version.strip():
+            payload["version"] = version.strip()
+        if tags.strip():
+            payload["tags"] = tags.strip()
+        if custom_metadata is not None:
+            payload["custom_metadata"] = json.dumps(custom_metadata)
+        if legacy_metadata is not None:
+            payload["metadata"] = json.dumps(legacy_metadata)
 
         files = {
             "file": (uploaded_pdf.name, uploaded_pdf.getvalue(), "application/pdf"),
@@ -179,6 +236,23 @@ def render_search(base_url: str) -> None:
     query = st.text_area("Pergunta / Query", key="search_query")
     collection_name = render_collection_selector(base_url, key_prefix="search")
     top_k = st.slider("Top K", min_value=1, max_value=100, value=5)
+    st.markdown("**Filtros de metadata (opcional)**")
+    col_filter_a, col_filter_b = st.columns(2)
+    with col_filter_a:
+        filter_tenant_id = st.text_input("tenant_id", key="search_filter_tenant_id")
+        filter_domain = st.text_input("domain", placeholder="rh", key="search_filter_domain")
+        filter_doc_type = st.text_input("doc_type", placeholder="manual", key="search_filter_doc_type")
+        filter_language = st.text_input("language", placeholder="pt-BR", key="search_filter_language")
+        filter_country = st.text_input("country", placeholder="BR", key="search_filter_country")
+    with col_filter_b:
+        filter_source_system = st.text_input("source_system", placeholder="sharepoint", key="search_filter_source_system")
+        filter_effective_date = st.text_input("effective_date", placeholder="2026-05-01", key="search_filter_effective_date")
+        filter_confidentiality = st.selectbox(
+            "confidentiality",
+            options=[""] + CONFIDENTIALITY_OPTIONS,
+            key="search_filter_confidentiality",
+        )
+        filter_version = st.text_input("version", placeholder="v1", key="search_filter_version")
 
     if st.button("Buscar", use_container_width=True):
         if not query.strip():
@@ -188,11 +262,33 @@ def render_search(base_url: str) -> None:
             st.warning("Informe o nome da coleção.")
             return
 
+        metadata_filters: Dict[str, Any] = {}
+        if filter_tenant_id.strip():
+            metadata_filters["tenant_id"] = filter_tenant_id.strip()
+        if filter_domain.strip():
+            metadata_filters["domain"] = filter_domain.strip()
+        if filter_doc_type.strip():
+            metadata_filters["doc_type"] = filter_doc_type.strip()
+        if filter_language.strip():
+            metadata_filters["language"] = filter_language.strip()
+        if filter_country.strip():
+            metadata_filters["country"] = filter_country.strip()
+        if filter_source_system.strip():
+            metadata_filters["source_system"] = filter_source_system.strip()
+        if filter_effective_date.strip():
+            metadata_filters["effective_date"] = filter_effective_date.strip()
+        if filter_confidentiality:
+            metadata_filters["confidentiality"] = filter_confidentiality
+        if filter_version.strip():
+            metadata_filters["version"] = filter_version.strip()
+
         payload = {
             "query": query.strip(),
             "collection_name": collection_name.strip(),
             "top_k": top_k,
         }
+        if metadata_filters:
+            payload["metadata_filters"] = metadata_filters
 
         with st.spinner("Buscando documentos..."):
             try:

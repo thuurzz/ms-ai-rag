@@ -154,7 +154,34 @@ Faz upload de um PDF, processa e gera embeddings.
 
 - `file` (obrigatório): Arquivo PDF
 - `collection_name` (obrigatório): Nome da coleção
-- `metadata` (opcional): JSON string com metadados adicionais
+- `metadata` (opcional): JSON string legado para metadados livres
+- `tenant_id` (opcional): identificador do tenant/cliente
+- `domain` (opcional): texto livre (ex.: `rh`, `juridico`, `financeiro`)
+- `doc_type` (opcional): texto livre (ex.: `politica`, `manual`, `contrato`)
+- `language` (opcional): idioma, ex.: `pt-BR`
+- `country` (opcional): país, ex.: `BR`
+- `source_system` (opcional): sistema de origem, ex.: `sharepoint`
+- `effective_date` (opcional): data efetiva `YYYY-MM-DD`
+- `confidentiality` (opcional): `publico_interno|restrito|confidencial`
+- `version` (opcional): versão do documento, ex.: `v1`
+- `tags` (opcional): lista de tags em JSON ou texto separado por vírgulas
+- `custom_metadata` (opcional): JSON para campos específicos do domínio
+
+### Catálogo de Metadados Recomendados
+
+| Campo | Tipo | Exemplo | Uso principal |
+|---|---|---|---|
+| `tenant_id` | string | `empresa_alpha` | Isolamento multi-tenant |
+| `domain` | string | `rh` | Recorte por área de negócio |
+| `doc_type` | string | `politica` | Classificação do tipo de conteúdo |
+| `language` | string | `pt-BR` | Filtro por idioma |
+| `country` | string | `BR` | Contexto regulatório/geográfico |
+| `source_system` | string | `sharepoint` | Rastreabilidade da origem |
+| `effective_date` | data | `2026-05-01` | Vigência do documento |
+| `confidentiality` | enum | `restrito` | Controle de acesso/contexto |
+| `version` | string | `v2` | Controle de versão |
+| `tags` | lista | `onboarding,rh,beneficios` | Facilidade de descoberta |
+| `custom_metadata` | objeto JSON | `{"departamento":"folha"}` | Extensão sem quebrar padrão |
 
 **Resposta:**
 
@@ -184,9 +211,26 @@ Busca documentos similares usando embeddings.
 {
   "query": "Qual é o assunto principal do documento?",
   "collection_name": "meus_documentos",
-  "top_k": 5
+  "top_k": 5,
+  "metadata_filters": {
+    "tenant_id": "empresa_alpha",
+    "domain": "rh"
+  }
 }
 ```
+
+`metadata_filters` é opcional e aplica filtro por igualdade antes da seleção dos resultados semânticos.
+
+Campos suportados em `metadata_filters`:
+- `tenant_id`
+- `domain`
+- `doc_type`
+- `language`
+- `country`
+- `source_system`
+- `effective_date`
+- `confidentiality`
+- `version`
 
 **Resposta:**
 
@@ -304,7 +348,17 @@ POSTGRES_COLLECTION_TABLE_PREFIX=rag_
 curl -X POST "http://localhost:8000/api/v1/upload" \
   -F "file=@documento.pdf" \
   -F "collection_name=meus_docs" \
-  -F 'metadata={"cliente": "empresa_xyz", "tipo": "documento"}'
+  -F "tenant_id=empresa_xyz" \
+  -F "domain=rh" \
+  -F "doc_type=manual" \
+  -F "language=pt-BR" \
+  -F "country=BR" \
+  -F "source_system=sharepoint" \
+  -F "effective_date=2026-05-01" \
+  -F "confidentiality=restrito" \
+  -F "version=v1" \
+  -F "tags=onboarding,rh,beneficios" \
+  -F 'custom_metadata={"area": "folha"}'
 
 # 2. Buscar documentos
 curl -X POST "http://localhost:8000/api/v1/search" \
@@ -312,7 +366,12 @@ curl -X POST "http://localhost:8000/api/v1/search" \
   -d '{
     "query": "qual é o assunto?",
     "collection_name": "meus_docs",
-    "top_k": 5
+    "top_k": 5,
+    "metadata_filters": {
+      "tenant_id": "empresa_xyz",
+      "domain": "rh",
+      "doc_type": "manual"
+    }
   }'
 
 # 3. Health check
@@ -335,7 +394,14 @@ with open("documento.pdf", "rb") as f:
     files = {"file": f}
     data = {
         "collection_name": "meus_docs",
-        "metadata": json.dumps({"type": "document"})
+        "tenant_id": "empresa_xyz",
+        "domain": "rh",
+        "doc_type": "manual",
+        "language": "pt-BR",
+        "country": "BR",
+        "confidentiality": "restrito",
+        "tags": "onboarding,rh,beneficios",
+        "custom_metadata": json.dumps({"area": "folha"})
     }
     response = requests.post(f"{BASE_URL}/api/v1/upload", files=files, data=data)
     print(response.json())
@@ -344,7 +410,11 @@ with open("documento.pdf", "rb") as f:
 search_query = {
     "query": "assunto principal",
     "collection_name": "meus_docs",
-    "top_k": 5
+    "top_k": 5,
+    "metadata_filters": {
+        "tenant_id": "empresa_xyz",
+        "doc_type": "manual"
+    }
 }
 response = requests.post(f"{BASE_URL}/api/v1/search", json=search_query)
 print(response.json())

@@ -41,7 +41,13 @@ class VectorStoreAdapter(ABC):
         pass
 
     @abstractmethod
-    async def search(self, query: str, collection_name: str, top_k: int = 5) -> List[SearchResult]:
+    async def search(
+        self,
+        query: str,
+        collection_name: str,
+        top_k: int = 5,
+        metadata_filters: Optional[Dict[str, Any]] = None,
+    ) -> List[SearchResult]:
         """
         Busca documentos similares no banco vetorial.
 
@@ -49,6 +55,7 @@ class VectorStoreAdapter(ABC):
             query: Texto a buscar
             collection_name: Nome da coleção/índice
             top_k: Número de resultados a retornar
+            metadata_filters: Filtros de metadata por igualdade
 
         Returns:
             Lista de resultados de busca ordenados por relevância

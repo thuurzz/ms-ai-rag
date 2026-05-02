@@ -147,7 +147,13 @@ class PineconeAdapter(VectorStoreAdapter):
             print(f"Erro ao adicionar documentos no Pinecone: {str(e)}")
             raise
 
-    async def search(self, query: str, collection_name: str, top_k: int = 5) -> List[SearchResult]:
+    async def search(
+        self,
+        query: str,
+        collection_name: str,
+        top_k: int = 5,
+        metadata_filters: Dict[str, Any] = None,
+    ) -> List[SearchResult]:
         """Busca documentos similares no Pinecone."""
         try:
             # Validar nome da coleção
@@ -163,12 +169,20 @@ class PineconeAdapter(VectorStoreAdapter):
             query_embedding = self.embedding_model.encode(
                 [query], convert_to_tensor=False)[0]
 
+            pinecone_filter = None
+            if metadata_filters:
+                pinecone_filter = {
+                    key: {"$eq": value}
+                    for key, value in metadata_filters.items()
+                }
+
             # Buscar
             results = index.query(
                 namespace=self.namespace,
                 vector=query_embedding.tolist() if hasattr(
                     query_embedding, 'tolist') else query_embedding,
                 top_k=top_k,
+                filter=pinecone_filter,
                 include_metadata=True
             )
 
